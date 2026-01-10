@@ -54,27 +54,7 @@ Bargain Portal: Real-time offer updates between buyer and seller.
 
 Chat: A clean bubble interface without a keyboard, utilizing the "Tap-to-Send" message menu.
 
-📥 Installation (For Developers)
-Clone the repository:
 
-Bash
-
-git clone https://github.com/your-username/justgetit.git
-Install dependencies:
-
-Bash
-
-npm install
-Set up Environment Variables: Create a .env file and add your Supabase credentials:
-
-Code snippet
-
-
-Run the development server:
-
-Bash
-
-npm run dev
 ⚖️ Campus Rules
 Email Verification: Only @mitindia.edu or @annauniv.edu emails are permitted.
 
