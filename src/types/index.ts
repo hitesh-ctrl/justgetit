@@ -3,13 +3,13 @@ export interface User {
   id: string;
   email: string;
   name: string;
-  profilePhoto?: string;
+  avatarUrl?: string;
   college: string;
   createdAt: string;
   trustScore: number;
   totalRatings: number;
   totalExchanges: number;
-  badge: 'new' | 'trusted' | 'top';
+  badge: 'new' | 'trusted' | 'top-seller';
 }
 
 // Category Types

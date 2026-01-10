@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MapPin, Star, Clock } from 'lucide-react';
 import type { NeedRequest } from '@/types';
-import { userStorage } from '@/lib/storage';
+import { useProfile } from '@/hooks/useProfiles';
 import { CATEGORIES, CAMPUS_LOCATIONS } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 
@@ -14,7 +14,7 @@ interface NeedRequestCardProps {
 
 export default function NeedRequestCard({ request }: NeedRequestCardProps) {
   const navigate = useNavigate();
-  const requester = userStorage.getUserById(request.userId);
+  const { data: requester } = useProfile(request.userId);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === request.category)?.label || request.category;
   const locationLabel = CAMPUS_LOCATIONS.find((l) => l.value === request.preferredLocation)?.label || request.preferredLocation;
@@ -77,7 +77,7 @@ export default function NeedRequestCard({ request }: NeedRequestCardProps) {
         {requester && (
           <div className="flex items-center gap-2 w-full">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={requester.profilePhoto} />
+              <AvatarImage src={requester.avatarUrl} />
               <AvatarFallback className="text-xs bg-needing text-needing-foreground">
                 {getInitials(requester.name)}
               </AvatarFallback>

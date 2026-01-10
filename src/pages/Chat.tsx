@@ -158,7 +158,7 @@ export default function Chat() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <Avatar className="h-10 w-10">
-            <AvatarImage src={otherUser?.profilePhoto} />
+            <AvatarImage src={otherUser?.avatarUrl} />
             <AvatarFallback className="bg-primary text-primary-foreground">
               {otherUser ? getInitials(otherUser.name) : '?'}
             </AvatarFallback>

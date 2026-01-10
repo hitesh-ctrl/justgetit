@@ -8,16 +8,16 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft } from 'lucide-react';
-import { CATEGORIES, CAMPUS_LOCATIONS, type Category, type CampusLocation, type NeedRequest } from '@/types';
-import { needRequestStorage, generateId } from '@/lib/storage';
+import { ArrowLeft, Loader2 } from 'lucide-react';
+import { CATEGORIES, CAMPUS_LOCATIONS, type Category, type CampusLocation } from '@/types';
+import { useCreateNeedRequest } from '@/hooks/useNeedRequests';
 import Layout from '@/components/Layout';
-import { addDays } from 'date-fns';
 
 export default function CreateRequest() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
+  const createRequest = useCreateNeedRequest();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -49,28 +49,30 @@ export default function CreateRequest() {
 
     setIsLoading(true);
 
-    const request: NeedRequest = {
-      id: generateId(),
-      userId: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      maxBudget: parseFloat(maxBudget),
-      category: category as Category,
-      preferredLocation: preferredLocation as CampusLocation,
-      status: 'open',
-      createdAt: new Date().toISOString(),
-      expiresAt: addDays(new Date(), 7).toISOString(),
-    };
+    try {
+      await createRequest.mutateAsync({
+        title: title.trim(),
+        description: description.trim(),
+        maxBudget: parseFloat(maxBudget),
+        category: category as Category,
+        preferredLocation: preferredLocation as CampusLocation,
+      });
 
-    needRequestStorage.save(request);
+      toast({
+        title: 'Request posted!',
+        description: "Sellers will be able to see what you're looking for.",
+      });
 
-    toast({
-      title: 'Request posted!',
-      description: 'Sellers will be able to see what you\'re looking for.',
-    });
-
-    navigate('/');
-    setIsLoading(false);
+      navigate('/');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create request',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -180,7 +182,14 @@ export default function CreateRequest() {
 
               {/* Submit */}
               <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-                {isLoading ? 'Posting...' : 'Post Request'}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Posting...
+                  </>
+                ) : (
+                  'Post Request'
+                )}
               </Button>
             </CardContent>
           </form>

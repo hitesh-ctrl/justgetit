@@ -155,7 +155,7 @@ export default function RequestDetail() {
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-12 w-12">
-                      <AvatarImage src={requester.profilePhoto} />
+                      <AvatarImage src={requester.avatarUrl} />
                       <AvatarFallback className="bg-needing text-needing-foreground">
                         {getInitials(requester.name)}
                       </AvatarFallback>
@@ -174,14 +174,14 @@ export default function RequestDetail() {
                     </div>
                     <Badge
                       className={
-                        requester.badge === 'top'
+                        requester.badge === 'top-seller'
                           ? 'bg-warning text-warning-foreground'
                           : requester.badge === 'trusted'
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-muted text-muted-foreground'
                       }
                     >
-                      {requester.badge === 'top'
+                      {requester.badge === 'top-seller'
                         ? '⭐ Top'
                         : requester.badge === 'trusted'
                         ? '✓ Trusted'

@@ -176,7 +176,7 @@ export default function RateExchange() {
         <Card>
           <CardHeader className="text-center">
             <Avatar className="h-20 w-20 mx-auto mb-2">
-              <AvatarImage src={otherUser.profilePhoto} />
+              <AvatarImage src={otherUser.avatarUrl} />
               <AvatarFallback className="text-xl bg-primary text-primary-foreground">
                 {getInitials(otherUser.name)}
               </AvatarFallback>

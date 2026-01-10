@@ -3,11 +3,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Search, SlidersHorizontal } from 'lucide-react';
+import { Search, SlidersHorizontal, Loader2 } from 'lucide-react';
 import { CATEGORIES, CAMPUS_LOCATIONS, type Category, type CampusLocation } from '@/types';
 import ListingCard from '@/components/ListingCard';
 import NeedRequestCard from '@/components/NeedRequestCard';
-import { listingStorage, needRequestStorage } from '@/lib/storage';
+import { useListings } from '@/hooks/useListings';
+import { useNeedRequests } from '@/hooks/useNeedRequests';
 import { useAuth } from '@/contexts/AuthContext';
 
 export default function Home() {
@@ -17,9 +18,9 @@ export default function Home() {
   const [locationFilter, setLocationFilter] = useState<CampusLocation | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
 
-  // Get all listings and requests
-  const allListings = listingStorage.getAll().filter((l) => l.status === 'available');
-  const allRequests = needRequestStorage.getAll().filter((r) => r.status === 'open');
+  // Fetch data from Supabase
+  const { data: allListings = [], isLoading: listingsLoading } = useListings('available');
+  const { data: allRequests = [], isLoading: requestsLoading } = useNeedRequests('open');
 
   // Apply filters
   const filteredListings = allListings.filter((listing) => {
@@ -140,7 +141,11 @@ export default function Home() {
         </TabsList>
 
         <TabsContent value="selling" className="mt-6">
-          {filteredListings.length === 0 ? (
+          {listingsLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredListings.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <p className="text-lg">No items for sale yet</p>
               <p className="text-sm mt-1">Be the first to list something!</p>
@@ -155,7 +160,11 @@ export default function Home() {
         </TabsContent>
 
         <TabsContent value="needing" className="mt-6">
-          {filteredRequests.length === 0 ? (
+          {requestsLoading ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : filteredRequests.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <p className="text-lg">No requests yet</p>
               <p className="text-sm mt-1">Post what you're looking for!</p>

@@ -162,7 +162,7 @@ export const ratingStorage = {
       
       let badge: User['badge'] = 'new';
       if (totalExchanges >= 25 && avgRating >= 4.5) {
-        badge = 'top';
+        badge = 'top-seller';
       } else if (totalExchanges >= 10 && avgRating >= 4) {
         badge = 'trusted';
       }

@@ -8,9 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Upload, X, ImagePlus } from 'lucide-react';
-import { CATEGORIES, CAMPUS_LOCATIONS, type Category, type CampusLocation, type Listing } from '@/types';
-import { listingStorage, generateId } from '@/lib/storage';
+import { ArrowLeft, X, ImagePlus, Loader2 } from 'lucide-react';
+import { CATEGORIES, CAMPUS_LOCATIONS, type Category, type CampusLocation } from '@/types';
+import { useCreateListing, uploadListingImage } from '@/hooks/useListings';
 import Layout from '@/components/Layout';
 
 export default function CreateListing() {
@@ -18,20 +18,22 @@ export default function CreateListing() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const createListing = useCreateListing();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
   const [category, setCategory] = useState<Category | ''>('');
   const [location, setLocation] = useState<CampusLocation | ''>('');
-  const [images, setImages] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files) return;
 
-    if (images.length + files.length > 4) {
+    if (imageFiles.length + files.length > 4) {
       toast({
         variant: 'destructive',
         title: 'Too many images',
@@ -41,9 +43,10 @@ export default function CreateListing() {
     }
 
     Array.from(files).forEach((file) => {
+      setImageFiles((prev) => [...prev, file]);
       const reader = new FileReader();
       reader.onloadend = () => {
-        setImages((prev) => [...prev, reader.result as string]);
+        setImagePreviews((prev) => [...prev, reader.result as string]);
       };
       reader.readAsDataURL(file);
     });
@@ -55,7 +58,8 @@ export default function CreateListing() {
   };
 
   const removeImage = (index: number) => {
-    setImages((prev) => prev.filter((_, i) => i !== index));
+    setImageFiles((prev) => prev.filter((_, i) => i !== index));
+    setImagePreviews((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -70,7 +74,7 @@ export default function CreateListing() {
       return;
     }
 
-    if (images.length === 0) {
+    if (imageFiles.length === 0) {
       toast({
         variant: 'destructive',
         title: 'Image required',
@@ -90,29 +94,39 @@ export default function CreateListing() {
 
     setIsLoading(true);
 
-    const listing: Listing = {
-      id: generateId(),
-      userId: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      price: parseFloat(price),
-      category: category as Category,
-      location: location as CampusLocation,
-      images,
-      status: 'available',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    try {
+      // Upload images to Supabase Storage
+      const imageUrls: string[] = [];
+      for (const file of imageFiles) {
+        const url = await uploadListingImage(file, user.id);
+        imageUrls.push(url);
+      }
 
-    listingStorage.save(listing);
+      // Create listing
+      await createListing.mutateAsync({
+        title: title.trim(),
+        description: description.trim(),
+        price: parseFloat(price),
+        category: category as Category,
+        location: location as CampusLocation,
+        images: imageUrls,
+      });
 
-    toast({
-      title: 'Listing created!',
-      description: 'Your item is now visible to other students.',
-    });
+      toast({
+        title: 'Listing created!',
+        description: 'Your item is now visible to other students.',
+      });
 
-    navigate('/');
-    setIsLoading(false);
+      navigate('/');
+    } catch (error) {
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: error instanceof Error ? error.message : 'Failed to create listing',
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -143,7 +157,7 @@ export default function CreateListing() {
               <div className="space-y-2">
                 <Label>Photos (required, max 4)</Label>
                 <div className="grid grid-cols-4 gap-3">
-                  {images.map((img, index) => (
+                  {imagePreviews.map((img, index) => (
                     <div
                       key={index}
                       className="aspect-square relative rounded-lg overflow-hidden border bg-muted"
@@ -162,7 +176,7 @@ export default function CreateListing() {
                       </button>
                     </div>
                   ))}
-                  {images.length < 4 && (
+                  {imagePreviews.length < 4 && (
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -260,7 +274,14 @@ export default function CreateListing() {
 
               {/* Submit */}
               <Button type="submit" className="w-full" size="lg" disabled={isLoading}>
-                {isLoading ? 'Creating...' : 'Create Listing'}
+                {isLoading ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  'Create Listing'
+                )}
               </Button>
             </CardContent>
           </form>
