@@ -1,14 +1,16 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import type { User } from '@/types';
-import { userStorage, generateId } from '@/lib/storage';
+import { User, Session } from '@supabase/supabase-js';
+import { supabase } from '@/integrations/supabase/client';
+import type { User as AppUser } from '@/types';
 
 interface AuthContextType {
-  user: User | null;
+  user: AppUser | null;
+  session: Session | null;
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   register: (email: string, password: string, name: string) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
-  updateUser: (updates: Partial<User>) => void;
+  logout: () => Promise<void>;
+  updateUser: (updates: Partial<AppUser>) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -39,38 +41,87 @@ function extractCollegeName(email: string): string {
   return 'University';
 }
 
-// Simple password storage (in real app, this would be hashed and stored securely)
-const PASSWORD_STORAGE_KEY = 'get_passwords';
-
-function getPasswords(): Record<string, string> {
-  try {
-    const data = localStorage.getItem(PASSWORD_STORAGE_KEY);
-    return data ? JSON.parse(data) : {};
-  } catch {
-    return {};
-  }
+function getBadge(trustScore: number, totalRatings: number): 'new' | 'trusted' | 'top-seller' {
+  if (totalRatings >= 25 && trustScore >= 4.5) return 'top-seller';
+  if (totalRatings >= 10 && trustScore >= 4.0) return 'trusted';
+  return 'new';
 }
 
-function savePassword(email: string, password: string): void {
-  const passwords = getPasswords();
-  passwords[email.toLowerCase()] = password;
-  localStorage.setItem(PASSWORD_STORAGE_KEY, JSON.stringify(passwords));
-}
-
-function checkPassword(email: string, password: string): boolean {
-  const passwords = getPasswords();
-  return passwords[email.toLowerCase()] === password;
-}
+type UserUpdates = {
+  name?: string;
+  avatarUrl?: string;
+};
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  const fetchProfile = async (userId: string) => {
+    const { data: profile, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (error) {
+      console.error('Error fetching profile:', error);
+      return null;
+    }
+
+    if (profile) {
+      const appUser: AppUser = {
+        id: profile.id,
+        email: profile.email,
+        name: profile.name,
+        avatarUrl: profile.avatar_url || undefined,
+        college: extractCollegeName(profile.email),
+        createdAt: profile.created_at,
+        trustScore: Number(profile.trust_score) || 0,
+        totalRatings: profile.total_ratings || 0,
+        totalExchanges: 0,
+        badge: getBadge(Number(profile.trust_score) || 0, profile.total_ratings || 0),
+      };
+      return appUser;
+    }
+    return null;
+  };
+
   useEffect(() => {
-    // Load user from storage on mount
-    const storedUser = userStorage.getCurrentUser();
-    setUser(storedUser);
-    setIsLoading(false);
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, currentSession) => {
+        setSession(currentSession);
+        
+        if (currentSession?.user) {
+          // Defer Supabase calls with setTimeout to prevent deadlocks
+          setTimeout(() => {
+            fetchProfile(currentSession.user.id).then(profile => {
+              setUser(profile);
+              setIsLoading(false);
+            });
+          }, 0);
+        } else {
+          setUser(null);
+          setIsLoading(false);
+        }
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session: currentSession } }) => {
+      setSession(currentSession);
+      if (currentSession?.user) {
+        fetchProfile(currentSession.user.id).then(profile => {
+          setUser(profile);
+          setIsLoading(false);
+        });
+      } else {
+        setIsLoading(false);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
@@ -79,20 +130,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Please enter a valid email address' };
     }
 
-    // Check if user exists
-    const existingUser = userStorage.getUserByEmail(email);
-    if (!existingUser) {
-      return { success: false, error: 'No account found with this email' };
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email.toLowerCase(),
+      password,
+    });
+
+    if (error) {
+      if (error.message.includes('Invalid login credentials')) {
+        return { success: false, error: 'Invalid email or password' };
+      }
+      return { success: false, error: error.message };
     }
 
-    // Check password
-    if (!checkPassword(email, password)) {
-      return { success: false, error: 'Incorrect password' };
-    }
-
-    // Login successful
-    setUser(existingUser);
-    userStorage.setCurrentUser(existingUser);
     return { success: true };
   };
 
@@ -114,11 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
 
-    // Check if user already exists
-    if (userStorage.getUserByEmail(email)) {
-      return { success: false, error: 'An account with this email already exists' };
-    }
-
     // Validate password
     if (password.length < 6) {
       return { success: false, error: 'Password must be at least 6 characters' };
@@ -129,46 +173,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Please enter your full name' };
     }
 
-    // Create new user
-    const newUser: User = {
-      id: generateId(),
-      email: email.toLowerCase(),
-      name: name.trim(),
-      college: extractCollegeName(email),
-      createdAt: new Date().toISOString(),
-      trustScore: 0,
-      totalRatings: 0,
-      totalExchanges: 0,
-      badge: 'new',
-    };
+    const redirectUrl = `${window.location.origin}/`;
 
-    // Save user and password
-    userStorage.saveUser(newUser);
-    savePassword(email, password);
-    
-    // Log in the new user
-    setUser(newUser);
-    userStorage.setCurrentUser(newUser);
+    const { data, error } = await supabase.auth.signUp({
+      email: email.toLowerCase(),
+      password,
+      options: {
+        emailRedirectTo: redirectUrl,
+        data: {
+          name: name.trim(),
+        },
+      },
+    });
+
+    if (error) {
+      if (error.message.includes('already registered')) {
+        return { success: false, error: 'An account with this email already exists' };
+      }
+      return { success: false, error: error.message };
+    }
 
     return { success: true };
   };
 
-  const logout = () => {
+  const logout = async () => {
+    await supabase.auth.signOut();
     setUser(null);
-    userStorage.setCurrentUser(null);
+    setSession(null);
   };
 
-  const updateUser = (updates: Partial<User>) => {
+  const updateUser = async (updates: UserUpdates) => {
     if (user) {
-      const updatedUser = { ...user, ...updates };
-      setUser(updatedUser);
-      userStorage.saveUser(updatedUser);
-      userStorage.setCurrentUser(updatedUser);
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          name: updates.name,
+          avatar_url: updates.avatarUrl,
+        })
+        .eq('id', user.id);
+
+      if (!error) {
+        setUser({ ...user, ...updates });
+      }
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, register, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, session, isLoading, login, register, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

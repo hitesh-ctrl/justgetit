@@ -33,7 +33,7 @@ export default function Profile() {
 
   const getBadgeStyle = (badge: string) => {
     switch (badge) {
-      case 'top':
+      case 'top-seller':
         return 'bg-warning text-warning-foreground';
       case 'trusted':
         return 'bg-primary text-primary-foreground';
@@ -44,7 +44,7 @@ export default function Profile() {
 
   const getBadgeLabel = (badge: string) => {
     switch (badge) {
-      case 'top':
+      case 'top-seller':
         return '⭐ Top Seller';
       case 'trusted':
         return '✓ Trusted';
@@ -61,7 +61,7 @@ export default function Profile() {
           <CardContent className="pt-6">
             <div className="flex flex-col sm:flex-row items-center gap-6">
               <Avatar className="h-24 w-24">
-                <AvatarImage src={user.profilePhoto} alt={user.name} />
+                <AvatarImage src={user.avatarUrl} alt={user.name} />
                 <AvatarFallback className="text-2xl bg-primary text-primary-foreground">
                   {getInitials(user.name)}
                 </AvatarFallback>

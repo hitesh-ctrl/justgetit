@@ -4,7 +4,7 @@ import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { MapPin, Star } from 'lucide-react';
 import type { Listing } from '@/types';
-import { userStorage } from '@/lib/storage';
+import { useProfile } from '@/hooks/useProfiles';
 import { CATEGORIES, CAMPUS_LOCATIONS } from '@/types';
 
 interface ListingCardProps {
@@ -13,7 +13,7 @@ interface ListingCardProps {
 
 export default function ListingCard({ listing }: ListingCardProps) {
   const navigate = useNavigate();
-  const seller = userStorage.getUserById(listing.userId);
+  const { data: seller } = useProfile(listing.userId);
 
   const categoryLabel = CATEGORIES.find((c) => c.value === listing.category)?.label || listing.category;
   const locationLabel = CAMPUS_LOCATIONS.find((l) => l.value === listing.location)?.label || listing.location;
@@ -77,7 +77,7 @@ export default function ListingCard({ listing }: ListingCardProps) {
         {seller && (
           <div className="flex items-center gap-2 w-full">
             <Avatar className="h-6 w-6">
-              <AvatarImage src={seller.profilePhoto} />
+              <AvatarImage src={seller.avatarUrl} />
               <AvatarFallback className="text-xs bg-primary text-primary-foreground">
                 {getInitials(seller.name)}
               </AvatarFallback>

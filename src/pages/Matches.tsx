@@ -100,7 +100,7 @@ export default function Matches() {
                     <div className="flex items-start gap-4">
                       {/* User Avatar */}
                       <Avatar className="h-12 w-12">
-                        <AvatarImage src={otherUser?.profilePhoto} />
+                        <AvatarImage src={otherUser?.avatarUrl} />
                         <AvatarFallback className="bg-primary text-primary-foreground">
                           {otherUser ? getInitials(otherUser.name) : '?'}
                         </AvatarFallback>

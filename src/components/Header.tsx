@@ -40,7 +40,7 @@ export default function Header() {
 
   const getBadgeColor = (badge: string) => {
     switch (badge) {
-      case 'top':
+      case 'top-seller':
         return 'bg-warning text-warning-foreground';
       case 'trusted':
         return 'bg-primary text-primary-foreground';
@@ -127,7 +127,7 @@ export default function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10">
-                  <AvatarImage src={user.profilePhoto} alt={user.name} />
+                  <AvatarImage src={user.avatarUrl} alt={user.name} />
                   <AvatarFallback className="bg-primary text-primary-foreground">
                     {getInitials(user.name)}
                   </AvatarFallback>
@@ -141,7 +141,7 @@ export default function Header() {
                   <p className="text-xs text-muted-foreground">{user.email}</p>
                   <div className="flex items-center gap-2 mt-1">
                     <Badge className={getBadgeColor(user.badge)} variant="secondary">
-                      {user.badge === 'top' ? '⭐ Top Seller' : user.badge === 'trusted' ? '✓ Trusted' : 'New'}
+                      {user.badge === 'top-seller' ? '⭐ Top Seller' : user.badge === 'trusted' ? '✓ Trusted' : 'New'}
                     </Badge>
                     {user.trustScore > 0 && (
                       <span className="text-xs flex items-center gap-1">

@@ -190,7 +190,7 @@ export default function ListingDetail() {
                 <CardContent className="p-4">
                   <div className="flex items-center gap-4">
                     <Avatar className="h-12 w-12">
-                      <AvatarImage src={seller.profilePhoto} />
+                      <AvatarImage src={seller.avatarUrl} />
                       <AvatarFallback className="bg-primary text-primary-foreground">
                         {getInitials(seller.name)}
                       </AvatarFallback>
@@ -209,14 +209,14 @@ export default function ListingDetail() {
                     </div>
                     <Badge
                       className={
-                        seller.badge === 'top'
+                        seller.badge === 'top-seller'
                           ? 'bg-warning text-warning-foreground'
                           : seller.badge === 'trusted'
                           ? 'bg-primary text-primary-foreground'
                           : 'bg-muted text-muted-foreground'
                       }
                     >
-                      {seller.badge === 'top'
+                      {seller.badge === 'top-seller'
                         ? '⭐ Top'
                         : seller.badge === 'trusted'
                         ? '✓ Trusted'
