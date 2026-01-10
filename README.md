@@ -59,7 +59,7 @@ Clone the repository:
 
 Bash
 
-git clone https://github.com/your-username/get-mit-thrift.git
+git clone https://github.com/your-username/justgetit.git
 Install dependencies:
 
 Bash
@@ -69,8 +69,7 @@ Set up Environment Variables: Create a .env file and add your Supabase credentia
 
 Code snippet
 
-VITE_SUPABASE_URL=your_url
-VITE_SUPABASE_ANON_KEY=your_key
+
 Run the development server:
 
 Bash
