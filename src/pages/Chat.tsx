@@ -1,24 +1,59 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  matchStorage,
-  messageStorage,
-  userStorage,
-  listingStorage,
-  needRequestStorage,
-  generateId,
-} from '@/lib/storage';
+import { useMatch, useUpdateMatch } from '@/hooks/useMatches';
+import { useMessages, useSendMessage } from '@/hooks/useMessages';
+import { useListings } from '@/hooks/useListings';
+import { useNeedRequests } from '@/hooks/useNeedRequests';
+import { useProfiles } from '@/hooks/useProfiles';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, Send, MapPin, CheckCircle2, Calendar } from 'lucide-react';
+import { ArrowLeft, MapPin, CheckCircle2, Calendar, Loader2, MessageCircle, DollarSign, Handshake } from 'lucide-react';
 import { CAMPUS_LOCATIONS } from '@/types';
-import { formatDistanceToNow, format } from 'date-fns';
+import { format } from 'date-fns';
 import Layout from '@/components/Layout';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
+
+// Pre-defined message templates
+const GENERAL_MESSAGES = [
+  "Hi! I'm interested in your item.",
+  "Is this still available?",
+  "Can we meet today?",
+  "What time works for you?",
+  "I'll be at the location in 10 mins.",
+  "Thanks! See you soon.",
+  "Sorry, I need to reschedule.",
+  "Deal confirmed! 🤝",
+];
+
+const NEGOTIATION_MESSAGES = [
+  "Can you do ₹50 less?",
+  "What's your best price?",
+  "I can offer ₹{price}",
+  "That's a bit high for me.",
+  "How about we meet in the middle?",
+  "Final offer: ₹{price}",
+  "Deal! Let's meet.",
+  "Sorry, that's too low for me.",
+  "I can add ₹50 more.",
+  "Let me think about it.",
+];
+
+const MEETING_MESSAGES = [
+  "I'll be at Library entrance.",
+  "Waiting near the Canteen.",
+  "I'm at Main Gate now.",
+  "Can we meet at Hostel?",
+  "Department building works?",
+  "Running 5 mins late.",
+  "I'm here, wearing blue shirt.",
+  "Where exactly are you?",
+];
+
+type ChatMode = 'general' | 'negotiation' | 'meeting';
 
 export default function Chat() {
   const { matchId } = useParams();
@@ -26,31 +61,42 @@ export default function Chat() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const [newMessage, setNewMessage] = useState('');
-  const [messages, setMessages] = useState<ReturnType<typeof messageStorage.getByMatchId>>([]);
+  const [chatMode, setChatMode] = useState<ChatMode>('general');
+  const [customPrice, setCustomPrice] = useState('');
 
-  const match = matchId ? matchStorage.getById(matchId) : null;
+  const { data: match, isLoading: matchLoading } = useMatch(matchId);
+  const { data: messages = [], isLoading: messagesLoading } = useMessages(matchId);
+  const { data: listings = [] } = useListings();
+  const { data: requests = [] } = useNeedRequests();
+  const { data: profiles = [] } = useProfiles();
+  const sendMessage = useSendMessage();
+  const updateMatch = useUpdateMatch();
+
   const otherUserId = match
     ? match.sellerId === user?.id
       ? match.buyerId
       : match.sellerId
     : null;
-  const otherUser = otherUserId ? userStorage.getUserById(otherUserId) : null;
-  const listing = match?.listingId ? listingStorage.getById(match.listingId) : null;
-  const request = match?.needRequestId ? needRequestStorage.getById(match.needRequestId) : null;
-  const locationLabel = match
+  const otherUser = otherUserId ? profiles.find(p => p.id === otherUserId) : null;
+  const listing = match?.listingId ? listings.find(l => l.id === match.listingId) : null;
+  const request = match?.requestId ? requests.find(r => r.id === match.requestId) : null;
+  const locationLabel = match?.suggestedLocation
     ? CAMPUS_LOCATIONS.find((l) => l.value === match.suggestedLocation)?.label || match.suggestedLocation
-    : '';
-
-  useEffect(() => {
-    if (matchId) {
-      setMessages(messageStorage.getByMatchId(matchId));
-    }
-  }, [matchId]);
+    : 'TBD';
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
+
+  if (matchLoading || messagesLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!match || !user) {
     return (
@@ -74,79 +120,80 @@ export default function Chat() {
       .slice(0, 2);
   };
 
-  const handleSendMessage = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim()) return;
-
-    const message = {
-      id: generateId(),
-      matchId: match.id,
-      senderId: user.id,
-      content: newMessage.trim(),
-      isSystemMessage: false,
-      createdAt: new Date().toISOString(),
-    };
-
-    messageStorage.save(message);
-    setMessages([...messages, message]);
-    setNewMessage('');
-
-    // Update match status to chatting if pending
-    if (match.status === 'pending') {
-      matchStorage.save({ ...match, status: 'chatting', updatedAt: new Date().toISOString() });
+  const handleSendPresetMessage = (content: string) => {
+    // Replace price placeholder if present
+    let finalContent = content;
+    if (content.includes('{price}') && customPrice) {
+      finalContent = content.replace('{price}', customPrice);
+    } else if (content.includes('{price}')) {
+      toast({
+        title: 'Enter a price',
+        description: 'Please enter a price amount first.',
+        variant: 'destructive',
+      });
+      return;
     }
+
+    sendMessage.mutate(
+      { matchId: match.id, content: finalContent },
+      {
+        onError: () => {
+          toast({
+            title: 'Failed to send',
+            description: 'Could not send message. Please try again.',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
   };
 
   const handleScheduleMeeting = () => {
-    const systemMessage = {
-      id: generateId(),
-      matchId: match.id,
-      senderId: 'system',
-      content: `📍 Suggested meeting point: ${locationLabel}\n\n${user.name} wants to schedule a meeting. Please confirm a date and time.`,
-      isSystemMessage: true,
-      createdAt: new Date().toISOString(),
-    };
+    const systemContent = `📍 Suggested meeting point: ${locationLabel}\n\n${user.name} wants to schedule a meeting. Please confirm a date and time.`;
 
-    messageStorage.save(systemMessage);
-    setMessages([...messages, systemMessage]);
-
-    matchStorage.save({
-      ...match,
-      status: 'meeting-scheduled',
-      updatedAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: 'Meeting suggested',
-      description: 'Coordinate with the other person for the exact time.',
-    });
+    sendMessage.mutate(
+      { matchId: match.id, content: systemContent, isSystemMessage: true },
+      {
+        onSuccess: () => {
+          updateMatch.mutate({ id: match.id, status: 'meeting-scheduled' });
+          toast({
+            title: 'Meeting suggested',
+            description: 'Coordinate with the other person for the exact time.',
+          });
+        },
+      }
+    );
   };
 
   const handleCompleteExchange = () => {
-    matchStorage.save({
-      ...match,
-      status: 'completed',
-      updatedAt: new Date().toISOString(),
-    });
+    updateMatch.mutate(
+      { id: match.id, status: 'completed' },
+      {
+        onSuccess: () => {
+          sendMessage.mutate({
+            matchId: match.id,
+            content: '✅ Exchange marked as completed! Don\'t forget to rate each other.',
+            isSystemMessage: true,
+          });
+          toast({
+            title: 'Exchange completed!',
+            description: 'You can now rate each other.',
+          });
+          navigate(`/rate/${match.id}`);
+        },
+      }
+    );
+  };
 
-    const systemMessage = {
-      id: generateId(),
-      matchId: match.id,
-      senderId: 'system',
-      content: '✅ Exchange marked as completed! Don\'t forget to rate each other.',
-      isSystemMessage: true,
-      createdAt: new Date().toISOString(),
-    };
-
-    messageStorage.save(systemMessage);
-    setMessages([...messages, systemMessage]);
-
-    toast({
-      title: 'Exchange completed!',
-      description: 'You can now rate each other.',
-    });
-
-    navigate(`/rate/${match.id}`);
+  const getCurrentMessages = () => {
+    switch (chatMode) {
+      case 'negotiation':
+        return NEGOTIATION_MESSAGES;
+      case 'meeting':
+        return MEETING_MESSAGES;
+      default:
+        return GENERAL_MESSAGES;
+    }
   };
 
   return (
@@ -189,6 +236,9 @@ export default function Chat() {
           <CardContent className="p-3 flex items-center gap-3 text-sm">
             <MapPin className="h-4 w-4 text-primary" />
             <span>Suggested meeting: <strong>{locationLabel}</strong></span>
+            {listing && (
+              <span className="ml-auto font-semibold text-primary">₹{listing.price}</span>
+            )}
           </CardContent>
         </Card>
 
@@ -197,7 +247,7 @@ export default function Chat() {
           {messages.length === 0 && (
             <div className="text-center text-muted-foreground py-8">
               <p>No messages yet</p>
-              <p className="text-sm">Say hello to start the conversation!</p>
+              <p className="text-sm">Tap a message below to start the conversation!</p>
             </div>
           )}
           {messages.map((message) => {
@@ -257,19 +307,73 @@ export default function Chat() {
           </div>
         )}
 
-        {/* Message Input */}
+        {/* Chat Mode Selector */}
         {match.status !== 'completed' && (
-          <form onSubmit={handleSendMessage} className="flex gap-2">
-            <Input
-              placeholder="Type a message..."
-              value={newMessage}
-              onChange={(e) => setNewMessage(e.target.value)}
-              className="flex-1"
-            />
-            <Button type="submit" size="icon" disabled={!newMessage.trim()}>
-              <Send className="h-4 w-4" />
-            </Button>
-          </form>
+          <div className="space-y-3 pb-4">
+            {/* Mode Tabs */}
+            <div className="flex gap-2">
+              <Button
+                variant={chatMode === 'general' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setChatMode('general')}
+                className="flex-1"
+              >
+                <MessageCircle className="h-4 w-4 mr-1" />
+                General
+              </Button>
+              <Button
+                variant={chatMode === 'negotiation' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setChatMode('negotiation')}
+                className="flex-1"
+              >
+                <DollarSign className="h-4 w-4 mr-1" />
+                Negotiate
+              </Button>
+              <Button
+                variant={chatMode === 'meeting' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => setChatMode('meeting')}
+                className="flex-1"
+              >
+                <Handshake className="h-4 w-4 mr-1" />
+                Meeting
+              </Button>
+            </div>
+
+            {/* Price Input for Negotiation Mode */}
+            {chatMode === 'negotiation' && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-muted-foreground">Your price:</span>
+                <input
+                  type="number"
+                  placeholder="Enter amount"
+                  value={customPrice}
+                  onChange={(e) => setCustomPrice(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-md border bg-background text-sm"
+                />
+              </div>
+            )}
+
+            {/* Pre-defined Messages */}
+            <div className="flex flex-wrap gap-2">
+              {getCurrentMessages().map((msg, index) => (
+                <Button
+                  key={index}
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleSendPresetMessage(msg)}
+                  disabled={sendMessage.isPending}
+                  className={cn(
+                    "text-xs",
+                    msg.includes('{price}') && !customPrice && "opacity-50"
+                  )}
+                >
+                  {msg.replace('{price}', customPrice || '___')}
+                </Button>
+              ))}
+            </div>
+          </div>
         )}
 
         {match.status === 'completed' && (

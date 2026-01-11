@@ -1,11 +1,14 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { listingStorage, userStorage, matchStorage, generateId, notificationStorage } from '@/lib/storage';
+import { useListing } from '@/hooks/useListings';
+import { useProfile, useProfiles } from '@/hooks/useProfiles';
+import { useMyMatches, useCreateMatch } from '@/hooks/useMatches';
+import { useCreateNotification } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, MapPin, Star, MessageSquare, Heart, Share2 } from 'lucide-react';
+import { ArrowLeft, MapPin, Star, Heart, Share2, Loader2 } from 'lucide-react';
 import { CATEGORIES, CAMPUS_LOCATIONS } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import Layout from '@/components/Layout';
@@ -19,8 +22,23 @@ export default function ListingDetail() {
   const { toast } = useToast();
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
 
-  const listing = id ? listingStorage.getById(id) : null;
-  const seller = listing ? userStorage.getUserById(listing.userId) : null;
+  const { data: listing, isLoading: listingLoading } = useListing(id);
+  const { data: profiles = [] } = useProfiles();
+  const { data: myMatches = [] } = useMyMatches();
+  const createMatch = useCreateMatch();
+  const createNotification = useCreateNotification();
+
+  const seller = listing ? profiles.find(p => p.id === listing.userId) : null;
+
+  if (listingLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!listing) {
     return (
@@ -55,8 +73,7 @@ export default function ListingDetail() {
     }
 
     // Check if match already exists
-    const existingMatches = matchStorage.getByUserId(user.id);
-    const alreadyMatched = existingMatches.some(
+    const alreadyMatched = myMatches.some(
       (m) => m.listingId === listing.id && m.buyerId === user.id
     );
 
@@ -68,39 +85,41 @@ export default function ListingDetail() {
       return;
     }
 
-    // Create match
-    const match = {
-      id: generateId(),
-      listingId: listing.id,
-      sellerId: listing.userId,
-      buyerId: user.id,
-      status: 'pending' as const,
-      matchScore: 100,
-      suggestedLocation: listing.location,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    createMatch.mutate(
+      {
+        listingId: listing.id,
+        sellerId: listing.userId,
+        buyerId: user.id,
+        suggestedLocation: listing.location,
+        matchScore: 100,
+      },
+      {
+        onSuccess: () => {
+          // Create notification for seller
+          createNotification.mutate({
+            userId: listing.userId,
+            type: 'match',
+            title: 'New Interest!',
+            message: `${user.name} is interested in "${listing.title}"`,
+            linkTo: '/matches',
+          });
 
-    matchStorage.save(match);
+          toast({
+            title: 'Interest sent!',
+            description: 'The seller will be notified. Check your matches to connect.',
+          });
 
-    // Notify seller
-    notificationStorage.save({
-      id: generateId(),
-      userId: listing.userId,
-      type: 'match',
-      title: 'New Interest!',
-      message: `${user.name} is interested in "${listing.title}"`,
-      read: false,
-      linkTo: '/matches',
-      createdAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: 'Interest sent!',
-      description: 'The seller will be notified. Check your matches to connect.',
-    });
-
-    navigate('/matches');
+          navigate('/matches');
+        },
+        onError: () => {
+          toast({
+            title: 'Error',
+            description: 'Could not send interest. Please try again.',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
   };
 
   return (
@@ -204,24 +223,9 @@ export default function ListingDetail() {
                             {seller.trustScore}
                           </span>
                         )}
-                        <span>{seller.totalExchanges} exchanges</span>
+                        <span>{seller.totalRatings} ratings</span>
                       </div>
                     </div>
-                    <Badge
-                      className={
-                        seller.badge === 'top-seller'
-                          ? 'bg-warning text-warning-foreground'
-                          : seller.badge === 'trusted'
-                          ? 'bg-primary text-primary-foreground'
-                          : 'bg-muted text-muted-foreground'
-                      }
-                    >
-                      {seller.badge === 'top-seller'
-                        ? '⭐ Top'
-                        : seller.badge === 'trusted'
-                        ? '✓ Trusted'
-                        : 'New'}
-                    </Badge>
                   </div>
                 </CardContent>
               </Card>
@@ -234,8 +238,17 @@ export default function ListingDetail() {
                   This is your listing
                 </Button>
               ) : (
-                <Button className="flex-1" size="lg" onClick={handleInterest}>
-                  <Heart className="h-4 w-4 mr-2" />
+                <Button 
+                  className="flex-1" 
+                  size="lg" 
+                  onClick={handleInterest}
+                  disabled={createMatch.isPending}
+                >
+                  {createMatch.isPending ? (
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  ) : (
+                    <Heart className="h-4 w-4 mr-2" />
+                  )}
                   I'm Interested
                 </Button>
               )}

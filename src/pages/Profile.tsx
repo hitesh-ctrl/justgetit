@@ -1,26 +1,29 @@
 import { useAuth } from '@/contexts/AuthContext';
+import { useMyListings } from '@/hooks/useListings';
+import { useMyNeedRequests } from '@/hooks/useNeedRequests';
+import { useRatingsByUser } from '@/hooks/useRatings';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Star, Package, Heart, CheckCircle2, Settings } from 'lucide-react';
+import { Star, Package, Heart, Settings, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import ListingCard from '@/components/ListingCard';
 import NeedRequestCard from '@/components/NeedRequestCard';
-import { listingStorage, needRequestStorage, ratingStorage } from '@/lib/storage';
 import { formatDistanceToNow } from 'date-fns';
 
 export default function Profile() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: myListings = [], isLoading: listingsLoading } = useMyListings();
+  const { data: myRequests = [], isLoading: requestsLoading } = useMyNeedRequests();
+  const { data: myRatings = [], isLoading: ratingsLoading } = useRatingsByUser(user?.id);
 
   if (!user) return null;
 
-  const myListings = listingStorage.getByUserId(user.id);
-  const myRequests = needRequestStorage.getByUserId(user.id);
-  const myRatings = ratingStorage.getByUserId(user.id);
+  const isLoading = listingsLoading || requestsLoading || ratingsLoading;
 
   const getInitials = (name: string) => {
     return name
@@ -52,6 +55,16 @@ export default function Profile() {
         return 'New Member';
     }
   };
+
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   return (
     <Layout>
