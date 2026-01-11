@@ -1,11 +1,14 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { needRequestStorage, userStorage, matchStorage, generateId, notificationStorage } from '@/lib/storage';
+import { useNeedRequest } from '@/hooks/useNeedRequests';
+import { useProfiles } from '@/hooks/useProfiles';
+import { useMyMatches, useCreateMatch } from '@/hooks/useMatches';
+import { useCreateNotification } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent } from '@/components/ui/card';
-import { ArrowLeft, MapPin, Star, Clock, Package } from 'lucide-react';
+import { ArrowLeft, MapPin, Star, Clock, Package, Loader2 } from 'lucide-react';
 import { CATEGORIES, CAMPUS_LOCATIONS } from '@/types';
 import { formatDistanceToNow } from 'date-fns';
 import Layout from '@/components/Layout';
@@ -17,8 +20,23 @@ export default function RequestDetail() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const request = id ? needRequestStorage.getById(id) : null;
-  const requester = request ? userStorage.getUserById(request.userId) : null;
+  const { data: request, isLoading: requestLoading } = useNeedRequest(id);
+  const { data: profiles = [] } = useProfiles();
+  const { data: myMatches = [] } = useMyMatches();
+  const createMatch = useCreateMatch();
+  const createNotification = useCreateNotification();
+
+  const requester = request ? profiles.find(p => p.id === request.userId) : null;
+
+  if (requestLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!request) {
     return (
@@ -55,9 +73,8 @@ export default function RequestDetail() {
     }
 
     // Check if match already exists
-    const existingMatches = matchStorage.getByUserId(user.id);
-    const alreadyMatched = existingMatches.some(
-      (m) => m.needRequestId === request.id && m.sellerId === user.id
+    const alreadyMatched = myMatches.some(
+      (m) => m.requestId === request.id && m.sellerId === user.id
     );
 
     if (alreadyMatched) {
@@ -68,39 +85,40 @@ export default function RequestDetail() {
       return;
     }
 
-    // Create match
-    const match = {
-      id: generateId(),
-      needRequestId: request.id,
-      sellerId: user.id,
-      buyerId: request.userId,
-      status: 'pending' as const,
-      matchScore: 100,
-      suggestedLocation: request.preferredLocation,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    createMatch.mutate(
+      {
+        requestId: request.id,
+        sellerId: user.id,
+        buyerId: request.userId,
+        suggestedLocation: request.preferredLocation,
+        matchScore: 100,
+      },
+      {
+        onSuccess: () => {
+          createNotification.mutate({
+            userId: request.userId,
+            type: 'match',
+            title: 'Someone has what you need!',
+            message: `${user.name} might have "${request.title}"`,
+            linkTo: '/matches',
+          });
 
-    matchStorage.save(match);
+          toast({
+            title: 'Offer sent!',
+            description: 'The requester will be notified. Check your matches to connect.',
+          });
 
-    // Notify requester
-    notificationStorage.save({
-      id: generateId(),
-      userId: request.userId,
-      type: 'match',
-      title: 'Someone has what you need!',
-      message: `${user.name} might have "${request.title}"`,
-      read: false,
-      linkTo: '/matches',
-      createdAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: 'Offer sent!',
-      description: 'The requester will be notified. Check your matches to connect.',
-    });
-
-    navigate('/matches');
+          navigate('/matches');
+        },
+        onError: () => {
+          toast({
+            title: 'Error',
+            description: 'Could not send offer. Please try again.',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
   };
 
   return (
@@ -169,7 +187,7 @@ export default function RequestDetail() {
                             {requester.trustScore}
                           </span>
                         )}
-                        <span>{requester.totalExchanges} exchanges</span>
+                        <span>{requester.totalRatings} ratings</span>
                       </div>
                     </div>
                     <Badge
@@ -198,8 +216,17 @@ export default function RequestDetail() {
                 This is your request
               </Button>
             ) : (
-              <Button className="w-full" size="lg" onClick={handleOffer}>
-                <Package className="h-4 w-4 mr-2" />
+              <Button 
+                className="w-full" 
+                size="lg" 
+                onClick={handleOffer}
+                disabled={createMatch.isPending}
+              >
+                {createMatch.isPending ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Package className="h-4 w-4 mr-2" />
+                )}
                 I Have This Item
               </Button>
             )}

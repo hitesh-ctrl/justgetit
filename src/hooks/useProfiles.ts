@@ -42,7 +42,7 @@ function mapDbProfileToUser(db: DbProfile): User {
     createdAt: db.created_at,
     trustScore,
     totalRatings,
-    totalExchanges: 0, // This would come from matches count
+    totalExchanges: 0,
     badge: getBadge(trustScore, totalRatings),
   };
 }
@@ -66,7 +66,21 @@ export function useProfile(userId: string | undefined) {
   });
 }
 
-export function useProfiles(userIds: string[]) {
+export function useProfiles() {
+  return useQuery({
+    queryKey: ['profiles'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*');
+      
+      if (error) throw error;
+      return (data as DbProfile[]).map(mapDbProfileToUser);
+    },
+  });
+}
+
+export function useProfilesByIds(userIds: string[]) {
   return useQuery({
     queryKey: ['profiles', userIds],
     queryFn: async () => {

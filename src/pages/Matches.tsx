@@ -1,10 +1,13 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { matchStorage, listingStorage, needRequestStorage, userStorage } from '@/lib/storage';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMyMatches } from '@/hooks/useMatches';
+import { useListings } from '@/hooks/useListings';
+import { useNeedRequests } from '@/hooks/useNeedRequests';
+import { useProfiles } from '@/hooks/useProfiles';
+import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { MessageSquare, MapPin, Star } from 'lucide-react';
+import { MessageSquare, MapPin, Star, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { CAMPUS_LOCATIONS } from '@/types';
@@ -13,10 +16,12 @@ import { formatDistanceToNow } from 'date-fns';
 export default function Matches() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: matches = [], isLoading: matchesLoading } = useMyMatches();
+  const { data: listings = [] } = useListings();
+  const { data: requests = [] } = useNeedRequests();
+  const { data: profiles = [] } = useProfiles();
 
   if (!user) return null;
-
-  const myMatches = matchStorage.getByUserId(user.id);
 
   const getInitials = (name: string) => {
     return name
@@ -58,6 +63,16 @@ export default function Matches() {
     }
   };
 
+  if (matchesLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -68,7 +83,7 @@ export default function Matches() {
           </p>
         </div>
 
-        {myMatches.length === 0 ? (
+        {matches.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
               <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-50" />
@@ -80,19 +95,19 @@ export default function Matches() {
           </Card>
         ) : (
           <div className="space-y-4">
-            {myMatches.map((match) => {
+            {matches.map((match) => {
               const listing = match.listingId
-                ? listingStorage.getById(match.listingId)
+                ? listings.find(l => l.id === match.listingId)
                 : null;
-              const request = match.needRequestId
-                ? needRequestStorage.getById(match.needRequestId)
+              const request = match.requestId
+                ? requests.find(r => r.id === match.requestId)
                 : null;
               const otherUserId =
                 match.sellerId === user.id ? match.buyerId : match.sellerId;
-              const otherUser = userStorage.getUserById(otherUserId);
+              const otherUser = profiles.find(p => p.id === otherUserId);
               const locationLabel =
                 CAMPUS_LOCATIONS.find((l) => l.value === match.suggestedLocation)
-                  ?.label || match.suggestedLocation;
+                  ?.label || match.suggestedLocation || 'TBD';
 
               return (
                 <Card key={match.id} className="hover:shadow-md transition-shadow">

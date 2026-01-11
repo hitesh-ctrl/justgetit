@@ -1,19 +1,16 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import {
-  matchStorage,
-  userStorage,
-  ratingStorage,
-  generateId,
-  notificationStorage,
-} from '@/lib/storage';
+import { useMatch } from '@/hooks/useMatches';
+import { useProfiles } from '@/hooks/useProfiles';
+import { useRatingsByMatch, useCreateRating } from '@/hooks/useRatings';
+import { useCreateNotification } from '@/hooks/useNotifications';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Label } from '@/components/ui/label';
-import { Star, ArrowLeft } from 'lucide-react';
+import { Star, ArrowLeft, Loader2 } from 'lucide-react';
 import Layout from '@/components/Layout';
 import { useToast } from '@/hooks/use-toast';
 
@@ -28,19 +25,32 @@ export default function RateExchange() {
   const [itemAccuracy, setItemAccuracy] = useState(0);
   const [punctuality, setPunctuality] = useState(0);
   const [review, setReview] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
 
-  const match = matchId ? matchStorage.getById(matchId) : null;
+  const { data: match, isLoading: matchLoading } = useMatch(matchId);
+  const { data: profiles = [] } = useProfiles();
+  const { data: existingRatings = [] } = useRatingsByMatch(matchId);
+  const createRating = useCreateRating();
+  const createNotification = useCreateNotification();
+
   const otherUserId = match
     ? match.sellerId === user?.id
       ? match.buyerId
       : match.sellerId
     : null;
-  const otherUser = otherUserId ? userStorage.getUserById(otherUserId) : null;
+  const otherUser = otherUserId ? profiles.find(p => p.id === otherUserId) : null;
 
   // Check if already rated
-  const existingRatings = matchId ? ratingStorage.getByMatchId(matchId) : [];
   const hasRated = existingRatings.some((r) => r.fromUserId === user?.id);
+
+  if (matchLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
 
   if (!match || !user || !otherUser) {
     return (
@@ -123,42 +133,43 @@ export default function RateExchange() {
       return;
     }
 
-    setIsLoading(true);
+    createRating.mutate(
+      {
+        matchId: match.id,
+        toUserId: otherUserId!,
+        overallRating,
+        communication: communication || overallRating,
+        itemAccuracy: itemAccuracy || overallRating,
+        punctuality: punctuality || overallRating,
+        review: review.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          // Notify the other user
+          createNotification.mutate({
+            userId: otherUserId!,
+            type: 'rating-reminder',
+            title: 'You received a rating!',
+            message: `${user.name} rated your exchange`,
+            linkTo: '/profile',
+          });
 
-    const rating = {
-      id: generateId(),
-      matchId: match.id,
-      fromUserId: user.id,
-      toUserId: otherUserId!,
-      overallRating,
-      communication: communication || overallRating,
-      itemAccuracy: itemAccuracy || overallRating,
-      punctuality: punctuality || overallRating,
-      review: review.trim() || undefined,
-      createdAt: new Date().toISOString(),
-    };
+          toast({
+            title: 'Rating submitted!',
+            description: 'Thank you for your feedback.',
+          });
 
-    ratingStorage.save(rating);
-
-    // Notify the other user
-    notificationStorage.save({
-      id: generateId(),
-      userId: otherUserId!,
-      type: 'rating-reminder',
-      title: 'You received a rating!',
-      message: `${user.name} rated your exchange`,
-      read: false,
-      linkTo: '/profile',
-      createdAt: new Date().toISOString(),
-    });
-
-    toast({
-      title: 'Rating submitted!',
-      description: 'Thank you for your feedback.',
-    });
-
-    navigate('/matches');
-    setIsLoading(false);
+          navigate('/matches');
+        },
+        onError: () => {
+          toast({
+            title: 'Error',
+            description: 'Could not submit rating. Please try again.',
+            variant: 'destructive',
+          });
+        },
+      }
+    );
   };
 
   return (
@@ -228,9 +239,9 @@ export default function RateExchange() {
                 type="submit"
                 className="w-full"
                 size="lg"
-                disabled={isLoading || overallRating === 0}
+                disabled={createRating.isPending || overallRating === 0}
               >
-                {isLoading ? 'Submitting...' : 'Submit Rating'}
+                {createRating.isPending ? 'Submitting...' : 'Submit Rating'}
               </Button>
             </CardContent>
           </form>

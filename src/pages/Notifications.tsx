@@ -1,8 +1,8 @@
 import { useAuth } from '@/contexts/AuthContext';
-import { notificationStorage } from '@/lib/storage';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { useMyNotifications, useMarkNotificationAsRead, useMarkAllNotificationsAsRead } from '@/hooks/useNotifications';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Bell, CheckCheck, MessageSquare, Star, Clock, Info } from 'lucide-react';
+import { Bell, CheckCheck, MessageSquare, Star, Clock, Info, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import Layout from '@/components/Layout';
 import { formatDistanceToNow } from 'date-fns';
@@ -11,22 +11,22 @@ import { cn } from '@/lib/utils';
 export default function Notifications() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const { data: notifications = [], isLoading } = useMyNotifications();
+  const markAsRead = useMarkNotificationAsRead();
+  const markAllAsRead = useMarkAllNotificationsAsRead();
 
   if (!user) return null;
-
-  const notifications = notificationStorage
-    .getByUserId(user.id)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
   const handleMarkAllAsRead = () => {
-    notificationStorage.markAllAsRead(user.id);
-    window.location.reload(); // Simple refresh to update UI
+    markAllAsRead.mutate();
   };
 
   const handleNotificationClick = (notification: typeof notifications[0]) => {
-    notificationStorage.markAsRead(notification.id);
+    if (!notification.read) {
+      markAsRead.mutate(notification.id);
+    }
     if (notification.linkTo) {
       navigate(notification.linkTo);
     }
@@ -47,6 +47,16 @@ export default function Notifications() {
     }
   };
 
+  if (isLoading) {
+    return (
+      <Layout>
+        <div className="flex justify-center items-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        </div>
+      </Layout>
+    );
+  }
+
   return (
     <Layout>
       <div className="max-w-2xl mx-auto space-y-6 animate-fade-in">
@@ -60,7 +70,12 @@ export default function Notifications() {
             </p>
           </div>
           {unreadCount > 0 && (
-            <Button variant="outline" size="sm" onClick={handleMarkAllAsRead}>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleMarkAllAsRead}
+              disabled={markAllAsRead.isPending}
+            >
               <CheckCheck className="h-4 w-4 mr-2" />
               Mark all read
             </Button>
